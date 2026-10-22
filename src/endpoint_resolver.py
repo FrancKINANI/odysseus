@@ -412,8 +412,27 @@ def build_models_url(base: str) -> Optional[str]:
     return _append_endpoint_path(base, "/models")
 
 
+def sanitize_api_key(api_key: Optional[str]) -> Optional[str]:
+    """Normalize a pasted API key.
+
+    Keys are usually copied out of a JSON/env file or a docs snippet, which
+    drags along the surrounding quotes and whitespace — e.g. ``"nvapi-…"`` or a
+    lone trailing ``"`` picked up from the JSON value. Passed through verbatim
+    as ``Authorization: Bearer <key>``, that stray quote makes the provider
+    answer 403 "Authorization failed" even though the key itself is valid. Some
+    providers' ``/models`` probe still returns 200 for a malformed key, so the
+    settings screen reports it as working while every real chat fails. Strip
+    surrounding whitespace and quote characters (API keys never legitimately
+    start or end with one).
+    """
+    if not isinstance(api_key, str):
+        return api_key
+    return api_key.strip().strip("\"'`").strip()
+
+
 def build_headers(api_key: Optional[str], base: str) -> Dict[str, str]:
     """Build auth headers for an endpoint."""
+    api_key = sanitize_api_key(api_key)
     provider = _detect_provider(base)
     headers: Dict[str, str] = {}
     if provider == "anthropic":

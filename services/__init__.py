@@ -21,8 +21,6 @@ _LAZY_EXPORTS = {
     "MemoryService": ("memory", "MemoryService"),
     "Memory": ("memory", "Memory"),
     "MemorySearchResult": ("memory", "MemorySearchResult"),
-    "ShellService": ("shell", "ShellService"),
-    "ShellResult": ("shell", "ShellResult"),
 }
 
 
@@ -38,6 +36,7 @@ def __getattr__(name):
 
 def __dir__():
     return sorted(set(globals()) | set(_LAZY_EXPORTS))
+
 
 __all__ = [
     # Search
@@ -56,7 +55,4 @@ __all__ = [
     "MemoryService",
     "Memory",
     "MemorySearchResult",
-    # Shell
-    "ShellService",
-    "ShellResult",
 ]

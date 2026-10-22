@@ -47,3 +47,30 @@ def test_headers_openrouter_adds_attribution():
 
 def test_headers_omit_authorization_when_no_key():
     assert er.build_headers(None, "https://api.openai.com/v1") == {}
+
+
+def test_headers_strip_quotes_from_pasted_key():
+    # Copying a key out of a JSON/env file ("key": "nvapi-...") usually drags
+    # the closing quote along; sent verbatim as `Bearer nvapi-..."` the
+    # provider answers 403 "Authorization failed" even though the key is valid.
+    base = "https://integrate.api.nvidia.com/v1"
+    assert er.build_headers('nvapi-abc"', base)["Authorization"] == "Bearer nvapi-abc"
+    assert er.build_headers('"nvapi-abc"', base)["Authorization"] == "Bearer nvapi-abc"
+    assert er.build_headers("  nvapi-abc  ", base)["Authorization"] == "Bearer nvapi-abc"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("nvapi-abc", "nvapi-abc"),
+    ('"nvapi-abc"', "nvapi-abc"),
+    ("'nvapi-abc'", "nvapi-abc"),
+    ("`nvapi-abc`", "nvapi-abc"),
+    ('nvapi-abc"', "nvapi-abc"),
+    ("  nvapi-abc ", "nvapi-abc"),
+    ("", ""),
+])
+def test_sanitize_api_key(raw, expected):
+    assert er.sanitize_api_key(raw) == expected
+
+
+def test_sanitize_api_key_passes_non_strings_through():
+    assert er.sanitize_api_key(None) is None

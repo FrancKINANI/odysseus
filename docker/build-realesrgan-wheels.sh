@@ -14,6 +14,10 @@
 # no fixed release, so we patch get_version() to exec into an explicit namespace
 # dict (works on every Python) and build wheels from the patched source.
 #
+# Those same setup.py files declare setup_requires, which PEP 517 turns into
+# build requirements and pip therefore resolves in the isolated build env — see
+# the note at the patch site below.
+#
 # Usage: build-realesrgan-wheels.sh [OUTPUT_DIR]   (default: /wheels)
 set -euo pipefail
 
@@ -48,21 +52,42 @@ PY
   tar xzf "${name}.tar.gz"
 done
 
-echo ">> patching get_version()"
+echo ">> patching get_version() and dropping setup_requires"
 python - <<'PY'
 import pathlib
+import re
+
 old_exec = "exec(compile(f.read(), version_file, 'exec'))"
 new_exec = "_ver_ns = {}\n        exec(compile(f.read(), version_file, 'exec'), _ver_ns)"
 old_ret = "return locals()['__version__']"
 new_ret = "return _ver_ns['__version__']"
-patched = 0
-for setup in pathlib.Path(".").glob("*/setup.py"):
+
+# setup_requires is not a runtime hint: setuptools reports it through
+# get_requires_for_build_wheel, so pip installs it into the throwaway PEP 517
+# build env — and `pip wheel --no-deps` does not exempt it. basicsr asks for
+# ['cython', 'numpy', 'torch'] and gfpgan/facexlib for ['cython', 'numpy'],
+# which on Python 3.14 dies with `No matching distribution found for torch`
+# (torch ships no cp314 wheels) or for numpy when the index cannot resolve it.
+# Dropping the keyword changes nothing about the built wheel: no extension is
+# compiled here (basicsr only builds its CUDA exts when BASICSR_EXT=True) and
+# install_requires — the metadata the Cookbook and runtime actually read — is
+# left intact.
+setup_requires_re = re.compile(r"^[ \t]*setup_requires=\[[^\]]*\],\n", re.M)
+
+version_patched = requires_dropped = 0
+for setup in sorted(pathlib.Path(".").glob("*/setup.py")):
     s = setup.read_text()
     if old_exec in s and old_ret in s:
-        setup.write_text(s.replace(old_exec, new_exec).replace(old_ret, new_ret))
-        print("   patched", setup)
-        patched += 1
-assert patched == 3, f"expected to patch 3 setup.py files, patched {patched}"
+        s = s.replace(old_exec, new_exec).replace(old_ret, new_ret)
+        version_patched += 1
+        print("   patched get_version()", setup)
+    s, n = setup_requires_re.subn("", s)
+    if n:
+        requires_dropped += 1
+        print("   dropped setup_requires", setup)
+    setup.write_text(s)
+assert version_patched == 3, f"expected to patch 3 get_version() bodies, patched {version_patched}"
+assert requires_dropped == 3, f"expected to drop setup_requires from 3 setup.py files, dropped {requires_dropped}"
 PY
 
 echo ">> building wheels into ${OUT}"

@@ -877,6 +877,45 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
 # Registry: action name -> async function(owner, **kwargs) -> (result_str, success_bool)
 
 
+SHELL_ALLOWLIST_ENV = "ODYSSEUS_SHELL_ALLOWLIST"
+
+
+def _shell_allowlist_patterns() -> Tuple[re.Pattern, ...]:
+    """Compiled allowlist for the shell-executing actions.
+
+    Entries are comma-separated regexes matched against the *entire* command
+    (``re.fullmatch``). Unset or empty means every shell action is denied:
+    unattended command execution has to be opted into explicitly. Invalid
+    entries are logged and skipped, so a typo fails closed rather than open.
+    """
+    raw = os.getenv(SHELL_ALLOWLIST_ENV, "")
+    patterns = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            patterns.append(re.compile(entry))
+        except re.error as exc:
+            logger.warning(
+                "Ignoring invalid %s entry %r: %s", SHELL_ALLOWLIST_ENV, entry, exc
+            )
+    return tuple(patterns)
+
+
+def shell_action_denied_reason(command: str) -> str:
+    """Return why a shell action is refused, or "" when it is allowed."""
+    patterns = _shell_allowlist_patterns()
+    if not patterns:
+        return (
+            f"shell actions are disabled; set {SHELL_ALLOWLIST_ENV} to a "
+            "comma-separated list of regexes matching allowed commands"
+        )
+    if any(pattern.fullmatch(command) for pattern in patterns):
+        return ""
+    return f"command not allowed by {SHELL_ALLOWLIST_ENV}"
+
+
 async def _run_subprocess(argv, *, shell: bool = False, timeout: int = 120, label: str = "Command") -> Tuple[str, bool]:
     """Scheduled local work consumes the request's sealed launch ceiling."""
     from src.agent_runtime.authority import active_request_authority, ExactOperation
@@ -906,6 +945,9 @@ async def action_ssh_command(owner: str, command: str = "", host: str = "localho
     """Run a shell command locally or on a remote host via SSH."""
     if not command:
         return "No command specified", False
+    denied = shell_action_denied_reason(command)
+    if denied:
+        return f"Blocked: {denied}", False
     if host in ("localhost", "127.0.0.1", "local"):
         if IS_WINDOWS:
             bash = find_bash()
@@ -922,6 +964,9 @@ async def action_run_script(owner: str, script: str = "", host: str = "", **kwar
     """Run a script locally, or via SSH when a host is configured."""
     if not script:
         return "No script specified", False
+    denied = shell_action_denied_reason(script)
+    if denied:
+        return f"Blocked: {denied}", False
     target_host = (host or os.getenv("ODYSSEUS_SCRIPT_HOST", "localhost")).strip()
     if target_host in ("", "localhost", "127.0.0.1", "local"):
         if IS_WINDOWS and find_bash():
@@ -934,6 +979,9 @@ async def action_run_local(owner: str, script: str = "", **kwargs) -> Tuple[str,
     """Run a script locally (no SSH)."""
     if not script:
         return "No script specified", False
+    denied = shell_action_denied_reason(script)
+    if denied:
+        return f"Blocked: {denied}", False
     if IS_WINDOWS and find_bash():
         return await _run_subprocess([find_bash(), "-c", script], timeout=300, label="Script")
     return await _run_subprocess(script, shell=True, timeout=300, label="Script")

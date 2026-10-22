@@ -45,6 +45,7 @@ from src.endpoint_resolver import (
     build_chat_url,
     build_models_url,
     build_headers,
+    sanitize_api_key,
 )
 from src.auth_helpers import _auth_disabled, effective_user, owner_filter
 
@@ -2191,7 +2192,7 @@ def setup_model_routes(model_discovery):
         # re-adding manually-added endpoints under their host:port name.
         from src.auth_helpers import get_current_user as _gcu_dedup
         _caller = _gcu_dedup(request) or None
-        _incoming_api_key = api_key.strip()
+        _incoming_api_key = sanitize_api_key(api_key)
         _db_dedup = SessionLocal()
         try:
             _same_url_rows = (
@@ -2243,8 +2244,8 @@ def setup_model_routes(model_discovery):
                 if incoming_model_type and (getattr(existing, "model_type", None) or "llm") != incoming_model_type:
                     existing.model_type = incoming_model_type
                     changed = True
-                if api_key.strip() and not existing.api_key:
-                    existing.api_key = api_key.strip()
+                if sanitize_api_key(api_key) and not existing.api_key:
+                    existing.api_key = sanitize_api_key(api_key)
                     changed = True
                 # Keep duplicate endpoint registration cheap. This path is hit
                 # by Cookbook/browser auto-register flows and can run while the
@@ -2256,7 +2257,7 @@ def setup_model_routes(model_discovery):
                 if require_model_list:
                     probed_models = _probe_endpoint(
                         base_url,
-                        (api_key.strip() or existing.api_key or None),
+                        (sanitize_api_key(api_key) or existing.api_key or None),
                         timeout=_explicit_model_list_timeout(base_url, existing_kind_for_probe, refresh_timeout),
                     )
                     if probed_models:
@@ -2292,10 +2293,10 @@ def setup_model_routes(model_discovery):
         finally:
             _db_dedup.close()
 
-        model_ids = _probe_endpoint(base_url, api_key.strip() or None, timeout=explicit_timeout) if should_probe else []
+        model_ids = _probe_endpoint(base_url, sanitize_api_key(api_key) or None, timeout=explicit_timeout) if should_probe else []
         ping = {"reachable": False, "error": None}
         if (should_probe or requested_kind in ("api", "proxy")) and not model_ids:
-            ping = _ping_endpoint(base_url, api_key.strip() or None, timeout=min(explicit_timeout, 10.0))
+            ping = _ping_endpoint(base_url, sanitize_api_key(api_key) or None, timeout=min(explicit_timeout, 10.0))
         if require_model_list and not model_ids and not is_featherless:
             raise HTTPException(400, _model_endpoint_error_message(base_url, ping))
 
@@ -2319,7 +2320,7 @@ def setup_model_routes(model_discovery):
                 id=ep_id,
                 name=name.strip(),
                 base_url=base_url,
-                api_key=api_key.strip() or None,
+                api_key=sanitize_api_key(api_key) or None,
                 is_enabled=True,
                 model_type=model_type.strip() if model_type else "llm",
                 endpoint_kind=requested_kind,
@@ -2373,7 +2374,7 @@ def setup_model_routes(model_discovery):
             "id": ep_id,
             "name": name.strip(),
             "base_url": base_url,
-            "has_key": bool(api_key.strip()),
+            "has_key": bool(sanitize_api_key(api_key)),
             "api_key_fingerprint": _api_key_fingerprint(api_key),
             "models": _merge_model_ids(model_ids, _pinned),
             "pinned_models": _pinned,
@@ -2405,8 +2406,8 @@ def setup_model_routes(model_discovery):
             requested_kind = "api"
         configured_timeout = _parse_positive_int(model_refresh_timeout, minimum=1, maximum=60)
         probe_timeout = _explicit_model_list_timeout(base_url, requested_kind, configured_timeout)
-        models = _probe_endpoint(base_url, api_key.strip() or None, timeout=probe_timeout)
-        ping = {"reachable": True, "error": None} if models else _ping_endpoint(base_url, api_key.strip() or None, timeout=min(probe_timeout, 10.0))
+        models = _probe_endpoint(base_url, sanitize_api_key(api_key) or None, timeout=probe_timeout)
+        ping = {"reachable": True, "error": None} if models else _ping_endpoint(base_url, sanitize_api_key(api_key) or None, timeout=min(probe_timeout, 10.0))
         is_online = bool(models) or bool(ping.get("reachable")) or (is_featherless and ping.get("reachable"))
         is_status = "online" if (models or (is_featherless and ping.get("reachable"))) else ("loading" if ping.get("loading") else ("empty" if ping.get("reachable") else "offline"))
         return {
@@ -2879,7 +2880,7 @@ def setup_model_routes(model_discovery):
                 # URL. Allow in-place updates so the admin can change the key
                 # (or correct a typo'd base URL) without nuking session state.
                 if "api_key" in body and isinstance(body["api_key"], str):
-                    _new_key = body["api_key"].strip()
+                    _new_key = sanitize_api_key(body["api_key"]) or ""
                     # Empty string means "clear it" (e.g. local Ollama no longer needs a key).
                     ep.api_key = _new_key or None
                 if "base_url" in body and isinstance(body["base_url"], str):

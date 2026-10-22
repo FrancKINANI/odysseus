@@ -1,7 +1,10 @@
 # ---- builder: patch + build wheels for Real-ESRGAN's broken-on-3.14 deps ----
 # basicsr/gfpgan/facexlib read their version via exec()+locals()['__version__'],
 # which raises KeyError on Python 3.13+ (PEP 667). Build patched wheels here so
-# the final image / Cookbook never has to compile the broken sdists. See
+# the final image / Cookbook never has to compile the broken sdists. Their
+# setup.py also declares setup_requires, which PEP 517 turns into build
+# requirements in the isolated build env (torch has no cp314 wheels, numpy
+# resolution can fail) — the script strips that too. See
 # docker/build-realesrgan-wheels.sh for the full rationale.
 FROM python:3.14-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \

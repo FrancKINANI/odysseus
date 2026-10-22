@@ -47,7 +47,7 @@ Runtime behavior:
 
 Those endpoints probe local or SSH-remote packages, prepend user install bins for pip CLIs, validate SSH host/port through shared route validators, validate remote venv values, and restrict package installs to allowlisted dependencies.
 
-`services.shell.service.ShellService` is a small standalone subprocess abstraction with output caps. It does not own live route behavior, PTY/tmux paths, Windows shell selection, admin checks, or Cookbook package probes.
+The former `services.shell.service.ShellService` facade — a standalone `create_subprocess_shell` wrapper with no sandbox, allowlist, or admin check — has been removed. Unattended shell execution now lives only in the built-in actions, which are allowlisted (see below).
 
 ## Agent Shell And Background Jobs
 
@@ -124,7 +124,7 @@ After model-visible external/workspace context, arbitrary MCP actions classify f
 - Windows does not support POSIX PTY/tmux paths; streaming falls back to pipes or detached logfile behavior.
 - Docker images include selected shell dependencies and the Docker CLI, but host Docker socket access from inside the app container remains unavailable unless the operator explicitly enables `docker/host-docker.yml`/`ODYSSEUS_ENABLE_HOST_DOCKER=true` and mounts a real socket.
 - OAuth supports Google `installed` or `web` key shapes, a remote paste-back exchange page, and generic Streamable HTTP OAuth token storage through encrypted `McpServer.oauth_tokens`. Valid JSON values that are not objects are treated as empty token state and replaced by an object on the next write. Google and generic MCP OAuth share `src.mcp_oauth.REDIRECT_URI`, built from `OAUTH_REDIRECT_BASE_URL`, then `APP_PUBLIC_URL`, then `http://localhost:${APP_PORT:-7000}`, plus `/api/mcp/oauth/callback`. Reverse proxies, public domains, and Docker host-port mappings should set an explicit public base because container bind state cannot infer the browser origin.
-- `services.shell.service` remains a transitional/simple facade separate from route-level compatibility behavior.
+- The built-in `run_local`, `run_script`, and `ssh_command` actions refuse every command unless it fully matches an entry in `ODYSSEUS_SHELL_ALLOWLIST` (comma-separated regexes). An unset or empty allowlist denies all three, so unattended shell execution is opt-in; invalid regex entries are skipped, which also fails closed.
 
 ## Security And Provenance
 
@@ -140,7 +140,7 @@ After model-visible external/workspace context, arbitrary MCP actions classify f
 
 ## Testing Notes
 
-Current targeted coverage includes Windows PTY import degradation, PTY unsupported stream events, the cross-site helper, `ShellService` stream deadline behavior, background store/monitor basics, concurrent MCP startup, per-server timeout isolation and cleanup, MCP manager cache/reconnect args, built-in `PYTHONPATH` preservation, non-object generic OAuth-token storage recovery, MCP CLI JSON/env serialization, MCP common truncation helper, action intent shell verbs, and public blocked-tool fail-closed behavior.
+Current targeted coverage includes Windows PTY import degradation, PTY unsupported stream events, the cross-site helper, shell-action allowlist enforcement, background store/monitor basics, concurrent MCP startup, per-server timeout isolation and cleanup, MCP manager cache/reconnect args, built-in `PYTHONPATH` preservation, non-object generic OAuth-token storage recovery, MCP CLI JSON/env serialization, MCP common truncation helper, action intent shell verbs, and public blocked-tool fail-closed behavior.
 
 The shell/MCP audit ran the targeted venv subset with 78 passing tests and one warning.
 
