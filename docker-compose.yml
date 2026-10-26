@@ -189,25 +189,7 @@ services:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
     restart: unless-stopped
 
-  caddy:
-    image: docker.io/caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - caddy-data:/data
-      - caddy-config:/config
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    environment:
-      - DOMAIN=julie.tail4f5d9d.ts.net
-    depends_on:
-      - odysseus
-    restart: unless-stopped
-
 volumes:
   searxng-data:
   chromadb-data:
   ntfy-cache:
-  caddy-data:
-  caddy-config:

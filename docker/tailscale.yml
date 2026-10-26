@@ -1,0 +1,15 @@
+# Tailscale-only exposure for the Odysseus web UI. Enable when a phone or
+# laptop on your tailnet should reach Odysseus without exposing it on the
+# Wi-Fi LAN.
+#   COMPOSE_FILE=docker-compose.yml:docker/tailscale.yml
+#   TS_BIND=<tailnet IPv4 from `tailscale ip -4`>
+#
+# This ADDS a publish on the tailnet address; it does not replace the base
+# 127.0.0.1 publish. Loopback must stay published: the host's browser reaches
+# Odysseus there, and so do the app's own internal calls (internal_api_base()
+# in src/constants.py). Replacing it instead via APP_BIND=<tailnet ip> breaks
+# both, which is why this is an overlay rather than a bind-address change.
+services:
+  odysseus:
+    ports:
+      - "${TS_BIND:?set TS_BIND to your tailnet IPv4 (tailscale ip -4)}:${APP_PORT:-7000}:7000"

@@ -1,0 +1,27 @@
+{
+	email julius@kinani.net
+	# Use Let's Encrypt with Tailscale MagicDNS
+	# MagicDNS domains work with Let's Encrypt since they resolve to Tailscale IPs
+}
+
+{$DOMAIN} {
+	reverse_proxy odysseus:7000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	
+	# WebSocket support for real-time features
+	@websockets {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websockets odysseus:7000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		flush_interval -1
+	}
+}
